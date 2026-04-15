@@ -1,0 +1,17 @@
+export const CHALLENGE_PHRASES = [
+  "march 14 to march 28",
+  "next monday in march plus 2 weeks",
+  "today + 9 days",
+  "friday before christmas",
+  "labor day weekend + a week",
+  "feb 18, 1988 - feb 29, 2024",
+  "march 1st 1986",
+  "3/1/86",
+  "03/01/86",
+  "3/01/1986",
+  "mar 1 86",
+  "m 1 86",
+  "the last two weeks",
+  "5 years in the past",
+  "1 hour from now",
+] as const;
