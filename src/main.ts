@@ -17,7 +17,7 @@ app.innerHTML = `
     </header>
 
     <div class="picker-wrap">
-      <hot-date id="hot-date" placeholder="Try: march 14 to march 28"></hot-date>
+      <hot-date id="hot-date"></hot-date>
     </div>
 
     <section class="challenges">
@@ -53,7 +53,14 @@ const resultElement = app.querySelector<HTMLPreElement>("#result");
 const eventsElement = app.querySelector<HTMLPreElement>("#events");
 const challengeList = app.querySelector<HTMLDivElement>("#challenge-list");
 
-if (!picker || !statusElement || !valueElement || !resultElement || !eventsElement || !challengeList) {
+if (
+  !picker ||
+  !statusElement ||
+  !valueElement ||
+  !resultElement ||
+  !eventsElement ||
+  !challengeList
+) {
   throw new Error("Required UI elements are missing.");
 }
 
@@ -77,17 +84,10 @@ function syncPanels(): void {
 }
 
 CHALLENGE_PHRASES.forEach((phrase) => {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "chip";
-  button.textContent = phrase;
-  button.addEventListener("click", () => {
-    hotDate.rawInput = phrase;
-    hotDate.focus();
-    appendEventLog(`challenge loaded: ${phrase}`);
-    syncPanels();
-  });
-  challengeListElement.append(button);
+  const item = document.createElement("span");
+  item.className = "chip";
+  item.textContent = phrase;
+  challengeListElement.append(item);
 });
 
 hotDate.addEventListener("parse-change", () => {

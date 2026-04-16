@@ -1,4 +1,5 @@
 import { JsParserEngine } from "./lib/parser/js-parser-engine";
+import { normalizeInput } from "./lib/utils/string-utils";
 import type {
   Candidate,
   CompletionSuggestion,
@@ -10,18 +11,83 @@ import type {
 
 const TEMPLATE = document.createElement("template");
 TEMPLATE.innerHTML = `
-  <div class="root" part="root">
-    <div class="field" part="field">
-      <input part="input" type="text" autocomplete="off" />
-    </div>
-    <div class="ghost" part="ghost" aria-live="polite"></div>
-    <div class="row" part="autocomplete-row"></div>
-    <div class="row" part="ambiguity-list" hidden></div>
-    <div class="preview" part="preview" aria-live="polite"></div>
+  <style>
+    :host {
+      display: inline-block;
+      font: inherit;
+      color: inherit;
+    }
+    .field {
+      position: relative;
+      display: block;
+    }
+    .input {
+      font: inherit;
+      color: inherit;
+      background: transparent;
+      border: 0;
+      outline: 0;
+      padding: 0;
+      margin: 0;
+      width: 100%;
+      min-width: 20ch;
+    }
+    .ghost {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      pointer-events: none;
+      font: inherit;
+      white-space: pre;
+      overflow: hidden;
+    }
+    .ghost-completion {
+      min-width: 0;
+      overflow: hidden;
+      white-space: pre;
+    }
+    .ghost-typed {
+      color: transparent;
+    }
+    .ghost-tail {
+      opacity: 0.5;
+    }
+    .ghost-hint {
+      margin-left: 0.5em;
+      padding: 0.05em 0.35em;
+      border: 1px solid currentColor;
+      border-radius: 3px;
+      font-size: 0.7em;
+      font-family: inherit;
+      opacity: 0.4;
+      vertical-align: middle;
+    }
+    .ghost-hint[hidden] {
+      display: none;
+    }
+    .ghost-resolution {
+      flex: 0 0 auto;
+      opacity: 0.5;
+    }
+    .ambiguity-list {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+    .ambiguity-list[hidden] {
+      display: none;
+    }
+  </style>
+  <div class="field" part="field">
+    <input class="input" part="input" type="text" autocomplete="off" spellcheck="false" />
+    <div class="ghost" part="ghost" aria-live="polite"><span class="ghost-completion"><span class="ghost-typed" aria-hidden="true"></span><span class="ghost-tail"></span><kbd class="ghost-hint" part="hint" hidden>Tab</kbd></span><span class="ghost-resolution"></span></div>
   </div>
+  <div class="ambiguity-list" part="ambiguity-list" hidden></div>
 `;
-
-type AcceptKeyMode = "arrow-right" | "tab" | "ctrl-enter";
 
 export class HotDateElement extends HTMLElement {
   public static formAssociated = true;
@@ -34,10 +100,6 @@ export class HotDateElement extends HTMLElement {
       "week-start",
       "mode",
       "allow-past",
-      "autocomplete-ui",
-      "max-suggestions",
-      "desktop-tab-complete",
-      "accept-suggestion-key",
       "placeholder",
       "name",
       "disabled",
@@ -48,10 +110,11 @@ export class HotDateElement extends HTMLElement {
   private readonly parser = new JsParserEngine();
   private readonly internals: ElementInternals | null;
   private readonly inputElement: HTMLInputElement;
-  private readonly ghostElement: HTMLDivElement;
-  private readonly suggestionsElement: HTMLDivElement;
+  private readonly ghostTypedElement: HTMLSpanElement;
+  private readonly ghostTailElement: HTMLSpanElement;
+  private readonly ghostHintElement: HTMLElement;
+  private readonly ghostResolutionElement: HTMLSpanElement;
   private readonly ambiguityElement: HTMLDivElement;
-  private readonly previewElement: HTMLDivElement;
 
   private rawInputValue = "";
   private committedValue: string | null = null;
@@ -70,10 +133,11 @@ export class HotDateElement extends HTMLElement {
     }
 
     this.inputElement = root.querySelector("input") ?? document.createElement("input");
-    this.ghostElement = root.querySelector(".ghost") ?? document.createElement("div");
-    this.suggestionsElement = root.querySelector<HTMLDivElement>("[part='autocomplete-row']") ?? document.createElement("div");
+    this.ghostTypedElement = root.querySelector<HTMLSpanElement>(".ghost-typed") ?? document.createElement("span");
+    this.ghostTailElement = root.querySelector<HTMLSpanElement>(".ghost-tail") ?? document.createElement("span");
+    this.ghostHintElement = root.querySelector<HTMLElement>(".ghost-hint") ?? document.createElement("kbd");
+    this.ghostResolutionElement = root.querySelector<HTMLSpanElement>(".ghost-resolution") ?? document.createElement("span");
     this.ambiguityElement = root.querySelector<HTMLDivElement>("[part='ambiguity-list']") ?? document.createElement("div");
-    this.previewElement = root.querySelector(".preview") ?? document.createElement("div");
 
     this.internals = typeof this.attachInternals === "function" ? this.attachInternals() : null;
 
@@ -213,6 +277,10 @@ export class HotDateElement extends HTMLElement {
       return false;
     }
 
+    if (suggestion.insertText === normalizeInput(this.rawInputValue)) {
+      return false;
+    }
+
     this.rawInputValue = suggestion.insertText;
     this.activeSuggestionIndexValue = index;
     this.syncInputPresentation();
@@ -233,8 +301,7 @@ export class HotDateElement extends HTMLElement {
 
     const total = this.parseState.suggestions.length;
     this.activeSuggestionIndexValue = (this.activeSuggestionIndexValue + direction + total) % total;
-    this.renderSuggestions();
-    this.renderGhostHint();
+    this.renderGhost();
     this.emit("suggestions-change", {
       suggestions: this.parseState.suggestions,
       activeSuggestionIndex: this.activeSuggestionIndexValue,
@@ -316,29 +383,10 @@ export class HotDateElement extends HTMLElement {
         return;
       }
 
-      if (event.key === "ArrowRight" && this.getAcceptKeyMode() === "arrow-right" && this.isCaretAtInputEnd()) {
+      if (event.key === "Tab" && !event.shiftKey && this.isCaretAtInputEnd() && this.hasCompletionTail()) {
         if (this.acceptSuggestion()) {
           event.preventDefault();
         }
-        return;
-      }
-
-      if (
-        event.key === "Tab" &&
-        this.hasAttribute("desktop-tab-complete") &&
-        this.getAcceptKeyMode() === "tab" &&
-        this.parseState.suggestions.length > 0
-      ) {
-        if (this.acceptSuggestion()) {
-          event.preventDefault();
-        }
-        return;
-      }
-
-      if (event.key === "Enter" && event.ctrlKey && this.getAcceptKeyMode() === "ctrl-enter") {
-        event.preventDefault();
-        this.acceptSuggestion();
-        this.confirm();
         return;
       }
 
@@ -350,17 +398,14 @@ export class HotDateElement extends HTMLElement {
 
       if (event.key === "Escape") {
         this.activeSuggestionIndexValue = 0;
-        this.renderGhostHint();
+        this.renderGhost();
       }
     });
   }
 
   private parseAndRender(): void {
     this.parseState = this.parser.parse(this.rawInputValue, this.buildContext());
-
-    if (this.activeSuggestionIndexValue >= this.parseState.suggestions.length) {
-      this.activeSuggestionIndexValue = this.parseState.suggestions.length ? 0 : -1;
-    }
+    this.activeSuggestionIndexValue = 0;
 
     this.renderAll();
 
@@ -383,35 +428,36 @@ export class HotDateElement extends HTMLElement {
   }
 
   private renderAll(): void {
-    this.renderGhostHint();
-    this.renderSuggestions();
+    this.renderGhost();
     this.renderAmbiguityChips();
-    this.renderPreview();
   }
 
-  private renderSuggestions(): void {
-    this.suggestionsElement.replaceChildren();
+  private renderGhost(): void {
+    this.ghostTypedElement.textContent = this.rawInputValue;
+    const tail = this.computeCompletionTail();
+    this.ghostTailElement.textContent = tail;
+    this.ghostHintElement.hidden = tail.length === 0;
+    this.ghostResolutionElement.textContent =
+      this.parseState.status === "valid" ? this.parseState.previewLabel ?? "" : "";
+  }
 
-    if (!this.parseState.suggestions.length || this.getAttribute("autocomplete-ui") === "off") {
-      this.suggestionsElement.hidden = true;
-      return;
+  private computeCompletionTail(): string {
+    const normalized = normalizeInput(this.rawInputValue);
+    const suggestion = this.parseState.suggestions[this.activeSuggestionIndexValue];
+
+    if (!suggestion || !normalized) {
+      return "";
     }
 
-    this.suggestionsElement.hidden = false;
+    if (!suggestion.insertText.startsWith(normalized) || suggestion.insertText === normalized) {
+      return "";
+    }
 
-    this.parseState.suggestions.forEach((suggestion, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.setAttribute("part", "autocomplete-button");
-      button.className = "action";
-      button.dataset.active = String(index === this.activeSuggestionIndexValue);
-      button.textContent = suggestion.label;
-      button.addEventListener("click", () => {
-        this.activeSuggestionIndexValue = index;
-        this.acceptSuggestion(index);
-      });
-      this.suggestionsElement.append(button);
-    });
+    return suggestion.insertText.slice(normalized.length);
+  }
+
+  private hasCompletionTail(): boolean {
+    return this.computeCompletionTail().length > 0;
   }
 
   private renderAmbiguityChips(): void {
@@ -429,7 +475,6 @@ export class HotDateElement extends HTMLElement {
         const button = document.createElement("button");
         button.type = "button";
         button.setAttribute("part", "chip");
-        button.className = "action";
         button.textContent = option.label;
         button.addEventListener("click", () => {
           this.resolveAmbiguity(group.id, option.id);
@@ -439,41 +484,12 @@ export class HotDateElement extends HTMLElement {
     });
   }
 
-  private renderPreview(): void {
-    if (this.parseState.status === "invalid" && this.rawInputValue) {
-      this.previewElement.textContent = "Could not parse this phrase yet.";
-      return;
-    }
-
-    this.previewElement.textContent = this.parseState.previewLabel ?? "";
-  }
-
-  private renderGhostHint(): void {
-    const suggestion = this.parseState.suggestions[this.activeSuggestionIndexValue];
-    const normalizedInput = this.rawInputValue.trim().toLowerCase();
-
-    if (!suggestion || !normalizedInput || !suggestion.insertText.startsWith(normalizedInput)) {
-      this.ghostElement.textContent = "";
-      return;
-    }
-
-    const tail = suggestion.insertText.slice(normalizedInput.length).trimStart();
-
-    if (!tail) {
-      this.ghostElement.textContent = "";
-      return;
-    }
-
-    const acceptHint = this.getAcceptKeyMode() === "arrow-right" ? "ArrowRight" : this.getAcceptKeyMode() === "tab" ? "Tab" : "Ctrl+Enter";
-    this.ghostElement.textContent = `${tail}  (${acceptHint} to accept)`;
-  }
-
   private syncInputPresentation(): void {
     if (this.inputElement.value !== this.rawInputValue) {
       this.inputElement.value = this.rawInputValue;
     }
 
-    this.inputElement.placeholder = this.getAttribute("placeholder") ?? "Try: march 14 to march 28";
+    this.inputElement.placeholder = this.getAttribute("placeholder") ?? "";
     this.inputElement.disabled = this.hasAttribute("disabled");
   }
 
@@ -533,16 +549,6 @@ export class HotDateElement extends HTMLElement {
     }
 
     return `${candidate.range.startUtcIso}/${candidate.range.endUtcIso}`;
-  }
-
-  private getAcceptKeyMode(): AcceptKeyMode {
-    const mode = this.getAttribute("accept-suggestion-key");
-
-    if (mode === "tab" || mode === "ctrl-enter") {
-      return mode;
-    }
-
-    return "arrow-right";
   }
 
   private isCaretAtInputEnd(): boolean {

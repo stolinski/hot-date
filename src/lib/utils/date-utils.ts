@@ -1,6 +1,12 @@
 import { Temporal } from "@js-temporal/polyfill";
+import { parseCountToken } from "./string-utils";
 
 export type DurationUnit = "hour" | "day" | "week" | "month" | "year";
+
+export interface ParsedDurationExpression {
+  amount: number;
+  unit: DurationUnit;
+}
 
 const SYSTEM_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
@@ -128,13 +134,73 @@ export function parseTimeToken(rawToken: string): { hour: number; minute: number
 }
 
 export function normalizeDurationUnit(rawUnit: string): DurationUnit | null {
-  const token = rawUnit.trim().toLowerCase().replace(/s$/, "");
+  const token = rawUnit.trim().toLowerCase().replace(/[.,]+$/g, "");
+  const singular = token.replace(/s$/, "");
 
-  if (token === "hour" || token === "day" || token === "week" || token === "month" || token === "year") {
-    return token;
+  if (singular === "hour" || singular === "hr" || singular === "h") {
+    return "hour";
+  }
+
+  if (singular === "day" || singular === "d") {
+    return "day";
+  }
+
+  if (singular === "week" || singular === "wk" || singular === "w") {
+    return "week";
+  }
+
+  if (singular === "month" || singular === "mo" || singular === "mth") {
+    return "month";
+  }
+
+  if (singular === "year" || singular === "yr" || singular === "y") {
+    return "year";
   }
 
   return null;
+}
+
+export function parseDurationExpression(rawExpression: string, defaultUnit: DurationUnit = "day"): ParsedDurationExpression | null {
+  const expression = rawExpression.trim().toLowerCase().replace(/[.,]+$/g, "");
+
+  if (!expression) {
+    return null;
+  }
+
+  const compactMatch = expression.match(/^([a-z]+|\d+)([a-z]+)$/i);
+  if (compactMatch) {
+    const amount = parseCountToken(compactMatch[1]);
+    const unit = normalizeDurationUnit(compactMatch[2]);
+
+    if (amount && unit) {
+      return { amount, unit };
+    }
+  }
+
+  const parts = expression.split(/\s+/);
+  if (parts.length === 1) {
+    const amount = parseCountToken(parts[0] ?? "");
+    if (amount) {
+      return {
+        amount,
+        unit: defaultUnit,
+      };
+    }
+
+    return null;
+  }
+
+  const amount = parseCountToken(parts[0] ?? "");
+  const unit = normalizeDurationUnit(parts.slice(1).join(" "));
+
+  if (!amount || !unit) {
+    return null;
+  }
+
+  return {
+    amount,
+    unit,
+  };
 }
 
 export function createLocalDate(year: number, month: number, day: number, hour = 0, minute = 0, timeZone = SYSTEM_TIME_ZONE): Date {
@@ -250,6 +316,19 @@ export function getNextWeekday(referenceDate: Date, weekday: number, timeZone = 
   const offset = dayDistance === 0 ? 7 : dayDistance;
 
   return toDate(zonedDateTime.add({ days: offset }));
+}
+
+export function getPreviousWeekdayBeforeDate(referenceDate: Date, weekday: number, timeZone = SYSTEM_TIME_ZONE): Date {
+  const normalizedReference = startOfDay(referenceDate, timeZone);
+  const zonedDateTime = toZonedDateTime(normalizedReference, timeZone);
+  const target = toTemporalWeekday(weekday);
+  let dayDistance = (zonedDateTime.dayOfWeek - target + 7) % 7;
+
+  if (dayDistance === 0) {
+    dayDistance = 7;
+  }
+
+  return toDate(zonedDateTime.subtract({ days: dayDistance }));
 }
 
 export function getFirstWeekdayInMonth(year: number, month: number, weekday: number, timeZone = SYSTEM_TIME_ZONE): Date {
@@ -370,22 +449,104 @@ export function getNextAnnualDate(referenceDate: Date, month: number, day: numbe
   return toDate(candidate);
 }
 
-export function getLaborDayWeekendRange(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): { start: Date; end: Date } {
+export function getLaborDayDate(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): Date {
   const now = toZonedDateTime(referenceDate, timeZone);
   let year = now.year;
   let laborDay = toZonedDateTime(getFirstWeekdayInMonth(year, 9, 1, timeZone), timeZone);
-  let weekendEnd = laborDay.subtract({ days: 1 });
 
-  if (weekendEnd.epochMilliseconds <= now.epochMilliseconds) {
+  if (laborDay.epochMilliseconds <= now.epochMilliseconds) {
     year += 1;
     laborDay = toZonedDateTime(getFirstWeekdayInMonth(year, 9, 1, timeZone), timeZone);
-    weekendEnd = laborDay.subtract({ days: 1 });
   }
 
-  const weekendStart = laborDay.subtract({ days: 2 });
+  return toDate(laborDay);
+}
+
+export function startOfWeek(
+  referenceDate: Date,
+  weekStart: "sunday" | "monday",
+  timeZone = SYSTEM_TIME_ZONE,
+): Date {
+  const zonedDateTime = toZonedDateTime(startOfDay(referenceDate, timeZone), timeZone);
+  const targetFirstDay = weekStart === "monday" ? 1 : 7;
+  const daysBack = (zonedDateTime.dayOfWeek - targetFirstDay + 7) % 7;
+  return toDate(zonedDateTime.subtract({ days: daysBack }));
+}
+
+export function endOfWeek(
+  referenceDate: Date,
+  weekStart: "sunday" | "monday",
+  timeZone = SYSTEM_TIME_ZONE,
+): Date {
+  const start = startOfWeek(referenceDate, weekStart, timeZone);
+  return addDuration(start, 6, "day", timeZone);
+}
+
+export function startOfMonth(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): Date {
+  const zonedDateTime = toZonedDateTime(referenceDate, timeZone).with({
+    day: 1,
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+    microsecond: 0,
+    nanosecond: 0,
+  });
+  return toDate(zonedDateTime);
+}
+
+export function endOfMonth(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): Date {
+  const zonedDateTime = toZonedDateTime(referenceDate, timeZone);
+  return toDate(
+    zonedDateTime.with({
+      day: zonedDateTime.daysInMonth,
+      hour: 0,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+      microsecond: 0,
+      nanosecond: 0,
+    }),
+  );
+}
+
+export function startOfYear(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): Date {
+  const zonedDateTime = toZonedDateTime(referenceDate, timeZone).with({
+    month: 1,
+    day: 1,
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+    microsecond: 0,
+    nanosecond: 0,
+  });
+  return toDate(zonedDateTime);
+}
+
+export function endOfYear(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): Date {
+  const zonedDateTime = toZonedDateTime(referenceDate, timeZone).with({
+    month: 12,
+    day: 31,
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+    microsecond: 0,
+    nanosecond: 0,
+  });
+  return toDate(zonedDateTime);
+}
+
+export function getWeekendBeforeDate(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): { start: Date; end: Date } {
+  const normalizedReference = startOfDay(referenceDate, timeZone);
+  const zonedDateTime = toZonedDateTime(normalizedReference, timeZone);
+  const daysBackToSunday = zonedDateTime.dayOfWeek % 7;
+  const sunday = zonedDateTime.subtract({ days: daysBackToSunday });
+  const saturday = sunday.subtract({ days: 1 });
 
   return {
-    start: toDate(weekendStart),
-    end: toDate(weekendEnd),
+    start: toDate(saturday),
+    end: toDate(sunday),
   };
 }

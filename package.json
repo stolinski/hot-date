@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bench": "node --import tsx bench/parser.bench.ts"
+    "bench": "node --import tsx bench/parser.bench.ts",
+    "coverage:variations": "node --import tsx scripts/variation-coverage.ts",
+    "coverage:variations:strict": "node --import tsx scripts/variation-coverage.ts --strict"
   },
   "devDependencies": {
     "@js-temporal/polyfill": "^0.4.4",

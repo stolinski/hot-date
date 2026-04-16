@@ -38,9 +38,8 @@ hot-date {
   display: block;
 }
 
-hot-date::part(root) {
-  display: grid;
-  gap: 0.5rem;
+hot-date::part(field) {
+  font-size: 1rem;
 }
 
 hot-date::part(input) {
@@ -48,16 +47,18 @@ hot-date::part(input) {
   box-sizing: border-box;
 }
 
-hot-date::part(autocomplete-row),
-hot-date::part(ambiguity-list) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-hot-date::part(autocomplete-button),
 hot-date::part(chip) {
   cursor: pointer;
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+hot-date::part(chip):hover {
+  border-color: #0f766e;
 }
 
 .challenges h2,
@@ -80,11 +81,7 @@ hot-date::part(chip) {
   border-radius: 999px;
   padding: 0.35rem 0.65rem;
   font-size: 0.75rem;
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: #0f766e;
+  color: #3f3f46;
 }
 
 .output {
