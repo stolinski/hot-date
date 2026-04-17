@@ -91,6 +91,24 @@ function resolveRangeEndpoint(rawExpression: string, now: Date, timeZone: string
     }
   }
 
+  const ago = normalized.match(/^(.+)\s+ago$/);
+  if (ago) {
+    const duration = parseDurationExpression(ago[1], "day");
+    if (duration) {
+      const date = addDuration(now, -duration.amount, duration.unit, timeZone);
+      return { date: startOfMinute(date), rollUnit: null };
+    }
+  }
+
+  const inFuture = normalized.match(/^in\s+(.+)$/);
+  if (inFuture) {
+    const duration = parseDurationExpression(inFuture[1], "day");
+    if (duration) {
+      const date = addDuration(now, duration.amount, duration.unit, timeZone);
+      return { date: startOfMinute(date), rollUnit: null };
+    }
+  }
+
   const lookback = normalized.match(/^(?:the\s+)?(?:last|past)\s+(.+)$/);
   if (lookback) {
     const duration = parseDurationExpression(lookback[1], "day");
@@ -190,6 +208,30 @@ export function parseAnchorPlusDurationPoint(ctx: RuleContext): CandidateWithSug
     date: startOfMinute(shiftedDate),
     suggestionText: normalizedInput,
     confidence: 0.93,
+    source: "rule",
+  });
+}
+
+export function parseAgoShorthand(ctx: RuleContext): CandidateWithSuggestion | null {
+  const { normalizedInput, now, timeZone, factory } = ctx;
+  const match = normalizedInput.match(/^(.+)\s+ago$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const duration = parseDurationExpression(match[1], "day");
+
+  if (!duration) {
+    return null;
+  }
+
+  const date = addDuration(now, -duration.amount, duration.unit, timeZone);
+
+  return factory.createPoint({
+    date: startOfMinute(date),
+    suggestionText: normalizedInput,
+    confidence: 0.9,
     source: "rule",
   });
 }

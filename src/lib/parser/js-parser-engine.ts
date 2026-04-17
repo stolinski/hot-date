@@ -2,6 +2,7 @@ import { normalizeFuzzyInput } from "../utils/string-utils";
 import { createCandidateFactory, getCanonicalValue, type CandidateWithSuggestion } from "./candidates";
 import { buildSuggestions } from "./complete";
 import {
+  parseAgoShorthand,
   parseAmbiguousNextWeekday,
   parseAnchorPlusDurationPoint,
   parseAnchorRange,
@@ -60,6 +61,7 @@ export class JsParserEngine implements ParserEngine {
       { rule: parseExplicitRange, kind: "range" as const },
       { rule: parseAnchorPlusDurationPoint, kind: "point" as const },
       { rule: parseInDurationPoint, kind: "point" as const },
+      { rule: parseAgoShorthand, kind: "point" as const },
       { rule: parseBoundaryOfPeriod, kind: "point" as const },
       { rule: parseThisNextLastPeriod, kind: "range" as const },
       { rule: parseLookbackWindow, kind: "range" as const },

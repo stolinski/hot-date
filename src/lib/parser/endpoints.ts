@@ -41,9 +41,10 @@ export function parseDateEndpoint(rawExpression: string, now: Date, timeZone: st
     };
   }
 
-  const relativeDate = expression.match(/^(today|tomorrow)(?:\s+([\d:]+(?:\s*(?:am|pm))?))?$/);
+  const relativeDate = expression.match(/^(today|tomorrow|yesterday)(?:\s+([\d:]+(?:\s*(?:am|pm))?))?$/);
   if (relativeDate) {
-    const baseDate = relativeDate[1] === "today" ? new Date(now.getTime()) : addDuration(now, 1, "day", timeZone);
+    const offset = relativeDate[1] === "yesterday" ? -1 : relativeDate[1] === "tomorrow" ? 1 : 0;
+    const baseDate = offset === 0 ? new Date(now.getTime()) : addDuration(now, offset, "day", timeZone);
     const parsedTime = relativeDate[2] ? parseTimeToken(relativeDate[2]) : null;
 
     return {

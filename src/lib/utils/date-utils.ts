@@ -331,6 +331,72 @@ export function getPreviousWeekdayBeforeDate(referenceDate: Date, weekday: numbe
   return toDate(zonedDateTime.subtract({ days: dayDistance }));
 }
 
+export function getNthWeekdayInMonth(
+  year: number,
+  month: number,
+  weekday: number,
+  occurrence: number,
+  timeZone = SYSTEM_TIME_ZONE,
+): Date {
+  const first = toZonedDateTime(getFirstWeekdayInMonth(year, month, weekday, timeZone), timeZone);
+  return toDate(first.add({ days: (occurrence - 1) * 7 }));
+}
+
+export function getLastWeekdayInMonth(
+  year: number,
+  month: number,
+  weekday: number,
+  timeZone = SYSTEM_TIME_ZONE,
+): Date {
+  let zonedDateTime = Temporal.ZonedDateTime.from({
+    timeZone,
+    year,
+    month,
+    day: 1,
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+  });
+  zonedDateTime = zonedDateTime.with({ day: zonedDateTime.daysInMonth });
+  const target = toTemporalWeekday(weekday);
+
+  while (zonedDateTime.dayOfWeek !== target) {
+    zonedDateTime = zonedDateTime.subtract({ days: 1 });
+  }
+
+  return toDate(zonedDateTime);
+}
+
+export function getNextAnnualNthWeekday(
+  referenceDate: Date,
+  month: number,
+  weekday: number,
+  occurrence: number,
+  timeZone = SYSTEM_TIME_ZONE,
+): Date {
+  const now = toZonedDateTime(referenceDate, timeZone);
+  const thisYear = getNthWeekdayInMonth(now.year, month, weekday, occurrence, timeZone);
+  if (thisYear.getTime() > referenceDate.getTime()) {
+    return thisYear;
+  }
+  return getNthWeekdayInMonth(now.year + 1, month, weekday, occurrence, timeZone);
+}
+
+export function getNextAnnualLastWeekday(
+  referenceDate: Date,
+  month: number,
+  weekday: number,
+  timeZone = SYSTEM_TIME_ZONE,
+): Date {
+  const now = toZonedDateTime(referenceDate, timeZone);
+  const thisYear = getLastWeekdayInMonth(now.year, month, weekday, timeZone);
+  if (thisYear.getTime() > referenceDate.getTime()) {
+    return thisYear;
+  }
+  return getLastWeekdayInMonth(now.year + 1, month, weekday, timeZone);
+}
+
 export function getFirstWeekdayInMonth(year: number, month: number, weekday: number, timeZone = SYSTEM_TIME_ZONE): Date {
   let zonedDateTime = Temporal.ZonedDateTime.from({
     timeZone,
@@ -460,6 +526,24 @@ export function getLaborDayDate(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE
   }
 
   return toDate(laborDay);
+}
+
+export function withDayInMonth(referenceDate: Date, day: number, timeZone = SYSTEM_TIME_ZONE): Date | null {
+  const zonedDateTime = toZonedDateTime(referenceDate, timeZone);
+  if (day < 1 || day > zonedDateTime.daysInMonth) {
+    return null;
+  }
+  return toDate(
+    zonedDateTime.with({
+      day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+      microsecond: 0,
+      nanosecond: 0,
+    }),
+  );
 }
 
 export function startOfWeek(

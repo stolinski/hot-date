@@ -80,6 +80,36 @@ describe("JsParserEngine", () => {
     expect(result.canonicalValue).toBe("2026-09-13T00:00:00Z");
   });
 
+  it("parses the expanded holiday set", () => {
+    const thanksgiving = parser.parse("thanksgiving", context);
+    expect(thanksgiving.status).toBe("valid");
+    expect(thanksgiving.canonicalValue).toBe("2026-11-26T00:00:00Z");
+
+    const halloween = parser.parse("halloween", context);
+    expect(halloween.canonicalValue).toBe("2026-10-31T00:00:00Z");
+
+    const valentines = parser.parse("valentine's day", context);
+    expect(valentines.canonicalValue).toBe("2027-02-14T00:00:00Z");
+
+    const mothersDay = parser.parse("mother's day", context);
+    expect(mothersDay.canonicalValue).toBe("2026-05-10T00:00:00Z");
+
+    const fathersDay = parser.parse("father's day", context);
+    expect(fathersDay.canonicalValue).toBe("2026-06-21T00:00:00Z");
+
+    const memorialDay = parser.parse("memorial day", context);
+    expect(memorialDay.canonicalValue).toBe("2026-05-25T00:00:00Z");
+
+    const independenceDay = parser.parse("4th of july", context);
+    expect(independenceDay.canonicalValue).toBe("2026-07-04T00:00:00Z");
+
+    const christmasEve = parser.parse("christmas eve", context);
+    expect(christmasEve.canonicalValue).toBe("2026-12-24T00:00:00Z");
+
+    const newYearsEve = parser.parse("new year's eve", context);
+    expect(newYearsEve.canonicalValue).toBe("2026-12-31T00:00:00Z");
+  });
+
   it("parses christmas and new years holiday anchors", () => {
     const christmas = parser.parse("christmas", context);
     expect(christmas.status).toBe("valid");
@@ -135,6 +165,48 @@ describe("JsParserEngine", () => {
     expect(result.status).toBe("valid");
     expect(result.valueKind).toBe("point");
     expect(result.canonicalValue).toBe("2026-05-04T00:00:00Z");
+  });
+
+  it("parses yesterday and day-after/before variants", () => {
+    const yesterday = parser.parse("yesterday", context);
+    expect(yesterday.status).toBe("valid");
+    expect(yesterday.canonicalValue).toBe("2026-04-14T00:00:00Z");
+
+    const dayAfter = parser.parse("day after tomorrow", context);
+    expect(dayAfter.canonicalValue).toBe("2026-04-17T00:00:00Z");
+
+    const dayBefore = parser.parse("the day before yesterday", context);
+    expect(dayBefore.canonicalValue).toBe("2026-04-13T00:00:00Z");
+
+    const yesterdayRange = parser.parse("yesterday to tomorrow", context);
+    expect(yesterdayRange.canonicalValue).toBe("2026-04-14T00:00:00Z/2026-04-16T00:00:00Z");
+  });
+
+  it("parses 'N ago' shorthand", () => {
+    const daysAgo = parser.parse("3 days ago", context);
+    expect(daysAgo.status).toBe("valid");
+    expect(daysAgo.canonicalValue).toBe("2026-04-12T12:00:00Z");
+
+    const weekAgo = parser.parse("a week ago", context);
+    expect(weekAgo.canonicalValue).toBe("2026-04-08T12:00:00Z");
+
+    const monthsAgo = parser.parse("2 months ago to today", context);
+    expect(monthsAgo.canonicalValue).toBe("2026-02-15T12:00:00Z/2026-04-15T00:00:00Z");
+  });
+
+  it("parses ordinal day of month", () => {
+    // Apr 15 2026 is Wednesday; "the 20th" stays in April.
+    const futureInMonth = parser.parse("the 20th", context);
+    expect(futureInMonth.status).toBe("valid");
+    expect(futureInMonth.canonicalValue).toBe("2026-04-20T00:00:00Z");
+
+    // "the 10th" is past in April, rolls to May.
+    const rolledForward = parser.parse("the 10th", context);
+    expect(rolledForward.canonicalValue).toBe("2026-05-10T00:00:00Z");
+
+    // "15th" (no "the") also works.
+    const bareOrdinal = parser.parse("15th", context);
+    expect(bareOrdinal.canonicalValue).toBe("2026-04-15T00:00:00Z");
   });
 
   it("parses 'in N units' as future point", () => {
@@ -199,6 +271,33 @@ describe("JsParserEngine", () => {
     expect(result.status).toBe("ambiguous");
     expect(result.ambiguityGroups.length).toBeGreaterThan(0);
     expect(result.canonicalValue).toBeNull();
+  });
+
+  it("fuzzy-corrects common typos to their canonical tokens", () => {
+    const tomorow = parser.parse("tomorow", context);
+    expect(tomorow.status).toBe("valid");
+    expect(tomorow.canonicalValue).toBe("2026-04-16T00:00:00Z");
+
+    const teusday = parser.parse("teusday", context);
+    expect(teusday.status).toBe("valid");
+    expect(teusday.valueKind).toBe("point");
+    // Apr 15 2026 is Wednesday, so next Tuesday = Apr 21.
+    expect(teusday.canonicalValue).toBe("2026-04-21T00:00:00Z");
+
+    const febuary = parser.parse("febuary 14", context);
+    expect(febuary.canonicalValue).toBe("2026-02-14T00:00:00Z");
+
+    const halloeen = parser.parse("halloeen", context);
+    expect(halloeen.canonicalValue).toBe("2026-10-31T00:00:00Z");
+
+    const marhc = parser.parse("marhc 14 to marhc 28", context);
+    expect(marhc.status).toBe("valid");
+    expect(marhc.valueKind).toBe("range");
+    expect(marhc.canonicalValue).toBe("2026-03-14T00:00:00Z/2026-03-28T00:00:00Z");
+
+    // Known-good tokens should never be "corrected".
+    const march = parser.parse("march 14", context);
+    expect(march.canonicalValue).toBe("2026-03-14T00:00:00Z");
   });
 
   it("parses the full challenge phrase suite", () => {

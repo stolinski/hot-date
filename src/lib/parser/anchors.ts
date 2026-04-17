@@ -8,6 +8,8 @@ import {
   parseMonthToken,
   parseTimeToken,
   parseWeekdayToken,
+  startOfDay,
+  withDayInMonth,
 } from "../utils/date-utils";
 import { parseDateEndpoint } from "./endpoints";
 import { resolveHolidayDate } from "./holidays";
@@ -28,29 +30,28 @@ export interface AnchorRange {
 export type AnchorValue = AnchorPoint | AnchorRange;
 
 export function parseAnchor(normalizedInput: string, now: Date, timeZone: string): AnchorValue | null {
-  if (normalizedInput === "today") {
+  const relativeDayOffsets: Record<string, number> = {
+    today: 0,
+    tomorrow: 1,
+    yesterday: -1,
+    "day after tomorrow": 2,
+    "the day after tomorrow": 2,
+    "day before yesterday": -2,
+    "the day before yesterday": -2,
+  };
+
+  if (normalizedInput in relativeDayOffsets) {
+    const offset = relativeDayOffsets[normalizedInput];
+    const base = startOfDay(now, timeZone);
+    const shifted = offset === 0 ? base : addDuration(base, offset, "day", timeZone);
     return {
       kind: "point",
-      date: createLocalDate(now.getFullYear(), now.getMonth() + 1, now.getDate(), 0, 0, timeZone),
+      date: shifted,
       suggestionText: normalizedInput,
     };
   }
 
-  if (normalizedInput === "tomorrow") {
-    const tomorrow = addDuration(
-      createLocalDate(now.getFullYear(), now.getMonth() + 1, now.getDate(), 0, 0, timeZone),
-      1,
-      "day",
-      timeZone,
-    );
-    return {
-      kind: "point",
-      date: tomorrow,
-      suggestionText: normalizedInput,
-    };
-  }
-
-  const relativeWithTime = normalizedInput.match(/^(today|tomorrow)\s+([\d:]+(?:\s*(?:am|pm))?)$/);
+  const relativeWithTime = normalizedInput.match(/^(today|tomorrow|yesterday)\s+([\d:]+(?:\s*(?:am|pm))?)$/);
   if (relativeWithTime) {
     const time = parseTimeToken(relativeWithTime[2]);
 
@@ -58,14 +59,45 @@ export function parseAnchor(normalizedInput: string, now: Date, timeZone: string
       return null;
     }
 
-    const base = relativeWithTime[1] === "today" ? new Date(now.getTime()) : addDuration(now, 1, "day", timeZone);
-    const date = createLocalDate(base.getFullYear(), base.getMonth() + 1, base.getDate(), time.hour, time.minute, timeZone);
+    const offset = relativeDayOffsets[relativeWithTime[1]] ?? 0;
+    const baseDate = addDuration(startOfDay(now, timeZone), offset, "day", timeZone);
+    const date = createLocalDate(
+      baseDate.getFullYear(),
+      baseDate.getMonth() + 1,
+      baseDate.getDate(),
+      time.hour,
+      time.minute,
+      timeZone,
+    );
 
     return {
       kind: "point",
       date,
       suggestionText: normalizedInput,
     };
+  }
+
+  const ordinalDay = normalizedInput.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)$/);
+  if (ordinalDay) {
+    const day = Number(ordinalDay[1]);
+    const thisMonth = withDayInMonth(now, day, timeZone);
+    const todayStart = startOfDay(now, timeZone);
+    if (thisMonth && thisMonth.getTime() >= todayStart.getTime()) {
+      return {
+        kind: "point",
+        date: thisMonth,
+        suggestionText: normalizedInput,
+      };
+    }
+    const nextMonthReference = addDuration(todayStart, 1, "month", timeZone);
+    const nextMonthDate = withDayInMonth(nextMonthReference, day, timeZone);
+    if (nextMonthDate) {
+      return {
+        kind: "point",
+        date: nextMonthDate,
+        suggestionText: normalizedInput,
+      };
+    }
   }
 
   const holidayAnchor = parseHolidayAnchor(normalizedInput, now, timeZone);
