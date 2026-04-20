@@ -1,17 +1,48 @@
 {
-  "name": "hot-date",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@stolinski/hot-date",
+  "version": "0.1.0",
+  "description": "A date input web component.",
   "type": "module",
+  "main": "./dist/hot-date.js",
+  "module": "./dist/hot-date.js",
+  "types": "./dist/hot-date.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/hot-date.d.ts",
+      "import": "./dist/hot-date.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "./dist/hot-date.js"
+  ],
+  "keywords": [
+    "date-picker",
+    "date-input",
+    "web-component",
+    "custom-element"
+  ],
+  "author": "Scott Tolinski",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stolinski/hot-date.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && tsc -p tsconfig.build.json",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "node --import tsx bench/parser.bench.ts",
     "coverage:variations": "node --import tsx scripts/variation-coverage.ts",
-    "coverage:variations:strict": "node --import tsx scripts/variation-coverage.ts --strict"
+    "coverage:variations:strict": "node --import tsx scripts/variation-coverage.ts --strict",
+    "prepublishOnly": "pnpm test && pnpm build"
   },
   "devDependencies": {
     "@js-temporal/polyfill": "^0.4.4",

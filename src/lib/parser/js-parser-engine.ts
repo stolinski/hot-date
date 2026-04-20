@@ -3,10 +3,10 @@ import { createCandidateFactory, getCanonicalValue, type CandidateWithSuggestion
 import { buildSuggestions } from "./complete";
 import {
   parseAgoShorthand,
-  parseAmbiguousNextWeekday,
   parseAnchorPlusDurationPoint,
   parseAnchorRange,
   parseBoundaryOfPeriod,
+  parseDurationBeforeAfterAnchor,
   parseExplicitRange,
   parseFutureDurationPoint,
   parseInDurationPoint,
@@ -60,6 +60,7 @@ export class JsParserEngine implements ParserEngine {
     const pointRules = [
       { rule: parseExplicitRange, kind: "range" as const },
       { rule: parseAnchorPlusDurationPoint, kind: "point" as const },
+      { rule: parseDurationBeforeAfterAnchor, kind: "point" as const },
       { rule: parseInDurationPoint, kind: "point" as const },
       { rule: parseAgoShorthand, kind: "point" as const },
       { rule: parseBoundaryOfPeriod, kind: "point" as const },
@@ -75,23 +76,6 @@ export class JsParserEngine implements ParserEngine {
       if (candidate) {
         return buildValidResult(rawInput, kind, candidate);
       }
-    }
-
-    const ambiguousWeekday = parseAmbiguousNextWeekday(ruleCtx);
-    if (ambiguousWeekday) {
-      return buildResult({
-        rawInput,
-        status: "ambiguous",
-        astType: "relative_weekday_datetime",
-        valueKind: "point",
-        candidates: ambiguousWeekday.candidates,
-        ambiguityGroups: [ambiguousWeekday.group],
-        selectedCandidateId: null,
-        previewLabel: ambiguousWeekday.candidates[0]?.label ?? null,
-        canonicalValue: null,
-        errors: [],
-        suggestions: buildSuggestions(rawInput),
-      });
     }
 
     const directPoint = parsePointValue(ruleCtx);

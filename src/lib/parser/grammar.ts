@@ -4,8 +4,6 @@ import {
   endOfMonth,
   endOfWeek,
   endOfYear,
-  getNextWeekday,
-  parseTimeToken,
   parseWeekdayToken,
   startOfMonth,
   startOfWeek,
@@ -16,7 +14,7 @@ import { parseAnchor } from "./anchors";
 import { type CandidateFactory, type CandidateWithSuggestion, startOfMinute } from "./candidates";
 import { parseDateEndpoint } from "./endpoints";
 import { parseDurationExpression } from "../utils/date-utils";
-import type { AmbiguityGroup, Candidate, ParseContext } from "./parser-types";
+import type { ParseContext } from "./parser-types";
 
 type PeriodUnit = "week" | "month" | "year";
 type PeriodScope = "this" | "next" | "last";
@@ -28,12 +26,6 @@ export interface RuleContext {
   timeZone: string;
   parseContext: ParseContext;
   factory: CandidateFactory;
-}
-
-export interface AmbiguousMatch {
-  candidates: Candidate[];
-  group: AmbiguityGroup;
-  suggestionTexts: string[];
 }
 
 type RollUnit = "year" | "week" | null;
@@ -69,6 +61,18 @@ function resolveRangeEndpoint(rawExpression: string, now: Date, timeZone: string
     if (anchorResult && duration) {
       const anchorDate = anchorResult.kind === "point" ? anchorResult.date : anchorResult.end;
       const shifted = addDuration(anchorDate, duration.amount, duration.unit, timeZone);
+      return { date: startOfMinute(shifted), rollUnit: null };
+    }
+  }
+
+  const durationBeforeAfter = normalized.match(/^(.+?)\s+(before|after)\s+(.+)$/);
+  if (durationBeforeAfter) {
+    const duration = parseDurationExpression(durationBeforeAfter[1], "day");
+    const anchorResult = parseAnchor(normalizeInput(durationBeforeAfter[3]), now, timeZone);
+    if (duration && anchorResult) {
+      const anchorDate = anchorResult.kind === "point" ? anchorResult.date : anchorResult.end;
+      const direction = durationBeforeAfter[2] === "after" ? 1 : -1;
+      const shifted = addDuration(anchorDate, direction * duration.amount, duration.unit, timeZone);
       return { date: startOfMinute(shifted), rollUnit: null };
     }
   }
@@ -121,6 +125,21 @@ function resolveRangeEndpoint(rawExpression: string, now: Date, timeZone: string
   return null;
 }
 
+function resolveRangeEndpointWithLeftContext(
+  rightRaw: string,
+  leftRaw: string,
+  now: Date,
+  timeZone: string,
+): ResolvedEndpoint | null {
+  const leftMonthMatch = normalizeInput(leftRaw).match(/^([a-z]+)\s+\d/);
+  if (!leftMonthMatch) {
+    return null;
+  }
+
+  const stitched = `${leftMonthMatch[1]} ${normalizeInput(rightRaw)}`;
+  return resolveRangeEndpoint(stitched, now, timeZone);
+}
+
 function isWeekdayAnchor(normalized: string): boolean {
   if (parseWeekdayToken(normalized) !== null) {
     return true;
@@ -146,7 +165,15 @@ export function parseExplicitRange(ctx: RuleContext): CandidateWithSuggestion | 
     }
 
     const left = resolveRangeEndpoint(leftRaw, now, timeZone);
-    const right = resolveRangeEndpoint(rightRaw, now, timeZone);
+    let right = resolveRangeEndpoint(rightRaw, now, timeZone);
+    const rightIsBareDay = /^\d{1,2}(?:st|nd|rd|th)?$/.test(normalizeInput(rightRaw));
+
+    if (left && (!right || rightIsBareDay)) {
+      const contextual = resolveRangeEndpointWithLeftContext(rightRaw, leftRaw, now, timeZone);
+      if (contextual) {
+        right = contextual;
+      }
+    }
 
     if (!left || !right) {
       continue;
@@ -178,6 +205,43 @@ export function parseExplicitRange(ctx: RuleContext): CandidateWithSuggestion | 
   }
 
   return null;
+}
+
+export function parseDurationBeforeAfterAnchor(ctx: RuleContext): CandidateWithSuggestion | null {
+  const { normalizedInput, now, timeZone, factory } = ctx;
+  const match = normalizedInput.match(/^(.+?)\s+(before|after)\s+(.+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const duration = parseDurationExpression(match[1], "day");
+
+  if (!duration) {
+    return null;
+  }
+
+  const anchor = parseAnchor(normalizeInput(match[3]), now, timeZone);
+
+  if (!anchor) {
+    return null;
+  }
+
+  const anchorDate = anchor.kind === "point" ? anchor.date : anchor.end;
+  const direction = match[2] === "after" ? 1 : -1;
+  const shiftedDate = addDuration(
+    anchorDate,
+    direction * duration.amount,
+    duration.unit,
+    timeZone,
+  );
+
+  return factory.createPoint({
+    date: startOfMinute(shiftedDate),
+    suggestionText: normalizedInput,
+    confidence: 0.93,
+    source: "rule",
+  });
 }
 
 export function parseAnchorPlusDurationPoint(ctx: RuleContext): CandidateWithSuggestion | null {
@@ -435,74 +499,6 @@ export function parseFutureDurationPoint(ctx: RuleContext): CandidateWithSuggest
     confidence: 0.9,
     source: "rule",
   });
-}
-
-export function parseAmbiguousNextWeekday(ctx: RuleContext): AmbiguousMatch | null {
-  const { normalizedInput, now, timeZone, parseContext, factory } = ctx;
-
-  if (normalizedInput.includes(" in ")) {
-    return null;
-  }
-
-  const match = normalizedInput.match(/^next\s+([a-z]+)(?:\s+([\w:]+(?:\s*(?:am|pm))?))?$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const weekday = parseWeekdayToken(match[1]);
-
-  if (weekday === null) {
-    return null;
-  }
-
-  const parsedTime = match[2]
-    ? parseTimeToken(match[2])
-    : parseContext.productRules.defaultTime ?? {
-        hour: 9,
-        minute: 0,
-      };
-
-  if (!parsedTime) {
-    return null;
-  }
-
-  const thisWeek = getNextWeekday(now, weekday, timeZone);
-  thisWeek.setHours(parsedTime.hour, parsedTime.minute, 0, 0);
-
-  const followingWeek = addDuration(thisWeek, 7, "day", timeZone);
-
-  const first = factory.createPoint({
-    date: thisWeek,
-    suggestionText: normalizedInput,
-    confidence: 0.72,
-    source: "rule",
-    id: "candidate-this-week",
-  });
-  const second = factory.createPoint({
-    date: followingWeek,
-    suggestionText: normalizedInput,
-    confidence: 0.58,
-    source: "rule",
-    id: "candidate-next-week",
-  });
-
-  const group: AmbiguityGroup = {
-    id: "ambiguity-next-weekday",
-    type: "relative_weekday_scope",
-    message: "Did you mean this upcoming weekday or the following one?",
-    required: true,
-    options: [
-      { id: "option-this-week", label: first.label, candidateId: first.id },
-      { id: "option-next-week", label: second.label, candidateId: second.id },
-    ],
-  };
-
-  return {
-    candidates: [first, second],
-    group,
-    suggestionTexts: ["this friday", "next friday"],
-  };
 }
 
 export function parsePointValue(ctx: RuleContext): CandidateWithSuggestion | null {

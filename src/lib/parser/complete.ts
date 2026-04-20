@@ -37,16 +37,19 @@ const VOCABULARY: readonly string[] = [
   "december",
   // holidays
   "christmas",
-  "xmas",
   "christmas eve",
+  "xmas",
+  "xmas eve",
   "new year",
   "new year's day",
   "new years",
+  "new years day",
   "new year's eve",
   "new years eve",
   "labor day",
   "memorial day",
   "thanksgiving",
+  "turkey day",
   "mother's day",
   "mothers day",
   "father's day",
@@ -54,9 +57,17 @@ const VOCABULARY: readonly string[] = [
   "halloween",
   "valentine's day",
   "valentines day",
+  "valentines",
   "july 4th",
+  "july 4",
   "4th of july",
+  "fourth of july",
   "independence day",
+  "easter",
+  "easter sunday",
+  "easter monday",
+  "good friday",
+  "palm sunday",
   // units and qualifiers
   "day",
   "days",
@@ -126,29 +137,44 @@ export function buildSuggestions(rawInput: string): CompletionSuggestion[] {
   }
 
   const lowered = rawInput.toLowerCase();
-  const matches: Array<{ insertText: string; overlap: number; termLength: number }> = [];
+  const matches: Array<{
+    insertText: string;
+    overlap: number;
+    termLength: number;
+    edits: number;
+  }> = [];
   const seen = new Set<string>();
 
   for (const term of VOCABULARY) {
-    const overlap = findBoundaryOverlap(lowered, term);
+    const match = findPrefixMatch(lowered, term);
 
-    if (overlap < MIN_OVERLAP || overlap >= term.length) {
+    if (!match) {
       continue;
     }
 
-    const tail = term.slice(overlap);
-    const insertText = rawInput + tail;
+    if (match.length >= term.length && match.edits === 0) {
+      continue;
+    }
+
+    const insertText =
+      match.edits === 0
+        ? rawInput + term.slice(match.length)
+        : rawInput.slice(0, rawInput.length - match.length) + term;
+
     const key = insertText.toLowerCase();
 
-    if (seen.has(key)) {
+    if (key === lowered || seen.has(key)) {
       continue;
     }
 
     seen.add(key);
-    matches.push({ insertText, overlap, termLength: term.length });
+    matches.push({ insertText, overlap: match.length, termLength: term.length, edits: match.edits });
   }
 
   matches.sort((a, b) => {
+    if (a.edits !== b.edits) {
+      return a.edits - b.edits;
+    }
     if (b.overlap !== a.overlap) {
       return b.overlap - a.overlap;
     }
@@ -160,24 +186,44 @@ export function buildSuggestions(rawInput: string): CompletionSuggestion[] {
     label: match.insertText,
     insertText: match.insertText,
     kind: "completion" as const,
-    confidence: 0.5 + Math.min(match.overlap / 10, 0.4),
+    confidence: 0.5 + Math.min(match.overlap / 10, 0.4) - match.edits * 0.15,
   }));
 }
 
-function findBoundaryOverlap(lowerInput: string, term: string): number {
+function findPrefixMatch(
+  lowerInput: string,
+  term: string,
+): { length: number; edits: number } | null {
   const max = Math.min(lowerInput.length, term.length);
 
-  for (let length = max; length > 0; length -= 1) {
-    if (!lowerInput.endsWith(term.slice(0, length))) {
+  for (let length = max; length >= MIN_OVERLAP; length -= 1) {
+    const boundaryIndex = lowerInput.length - length - 1;
+
+    if (boundaryIndex >= 0 && !/\s/.test(lowerInput.charAt(boundaryIndex))) {
       continue;
     }
 
-    const boundaryIndex = lowerInput.length - length - 1;
+    const inputSlice = lowerInput.slice(lowerInput.length - length);
+    const termPrefix = term.slice(0, length);
 
-    if (boundaryIndex < 0 || /\s/.test(lowerInput.charAt(boundaryIndex))) {
-      return length;
+    let edits = 0;
+    for (let i = 0; i < length; i += 1) {
+      if (inputSlice[i] !== termPrefix[i]) {
+        edits += 1;
+        if (edits > 1) {
+          break;
+        }
+      }
+    }
+
+    if (edits === 0) {
+      return { length, edits };
+    }
+
+    if (edits === 1 && inputSlice[0] === termPrefix[0]) {
+      return { length, edits };
     }
   }
 
-  return 0;
+  return null;
 }

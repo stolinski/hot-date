@@ -1,6 +1,8 @@
 import {
+  addDuration,
   getLaborDayDate,
   getNextAnnualDate,
+  getNextAnnualEasterDate,
   getNextAnnualLastWeekday,
   getNextAnnualNthWeekday,
 } from "../utils/date-utils";
@@ -51,6 +53,25 @@ const HOLIDAY_ALIASES: HolidayAlias[] = [
   {
     aliases: ["halloween"],
     resolve: (now, timeZone) => getNextAnnualDate(now, 10, 31, timeZone),
+  },
+  {
+    aliases: ["easter", "easter sunday", "easter day"],
+    resolve: (now, timeZone) => getNextAnnualEasterDate(now, timeZone),
+  },
+  {
+    aliases: ["good friday"],
+    resolve: (now, timeZone) =>
+      addDuration(getNextAnnualEasterDate(now, timeZone), -2, "day", timeZone),
+  },
+  {
+    aliases: ["easter monday"],
+    resolve: (now, timeZone) =>
+      addDuration(getNextAnnualEasterDate(now, timeZone), 1, "day", timeZone),
+  },
+  {
+    aliases: ["palm sunday"],
+    resolve: (now, timeZone) =>
+      addDuration(getNextAnnualEasterDate(now, timeZone), -7, "day", timeZone),
   },
   {
     aliases: ["valentine's day", "valentines day", "valentines", "valentine's"],

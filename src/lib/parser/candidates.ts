@@ -81,12 +81,12 @@ export function getCanonicalValue(candidate: Candidate | null): string | null {
   }
 
   if (candidate.kind === "point") {
-    return candidate.utcIso ?? null;
+    return candidate.isoDate ?? null;
   }
 
   if (!candidate.range) {
     return null;
   }
 
-  return `${candidate.range.startUtcIso}/${candidate.range.endUtcIso}`;
+  return `${candidate.range.startDate}/${candidate.range.endDate}`;
 }

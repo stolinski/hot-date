@@ -9,6 +9,8 @@ import type {
   ValueKind,
 } from "./lib/parser/parser-types";
 
+const DEFAULT_PLACEHOLDER = "next Friday";
+
 const TEMPLATE = document.createElement("template");
 TEMPLATE.innerHTML = `
   <style>
@@ -16,11 +18,17 @@ TEMPLATE.innerHTML = `
       display: inline-block;
       font: inherit;
       color: inherit;
-    }
-    .field {
-      position: relative;
-      display: block;
-    }
+	}
+
+		.field {
+			position: relative;
+			display: block;
+			font-size: 1rem;
+			background: #ffffff;
+			border: 1px solid #e4e4e7;
+			border-radius: 0.9rem;
+			padding: 1rem;
+		}
     .input {
       font: inherit;
       color: inherit;
@@ -31,12 +39,14 @@ TEMPLATE.innerHTML = `
       margin: 0;
       width: 100%;
       min-width: 20ch;
+			box-sizing: border-box;
     }
     .ghost {
       position: absolute;
       inset: 0;
       display: flex;
-      align-items: baseline;
+      align-items: center;
+			padding: 1rem;
       justify-content: space-between;
       gap: 1rem;
       pointer-events: none;
@@ -72,21 +82,25 @@ TEMPLATE.innerHTML = `
       flex: 0 0 auto;
       opacity: 0.5;
     }
-    .ambiguity-list {
+    ::slotted([slot="ambiguity"]) {
       margin-top: 0.5rem;
       display: flex;
       flex-wrap: wrap;
       gap: 0.25rem;
     }
-    .ambiguity-list[hidden] {
+    ::slotted([slot="ambiguity"][hidden]) {
       display: none;
     }
+		p {
+		line-height: 1.4;
+	}
   </style>
   <div class="field" part="field">
     <input class="input" part="input" type="text" autocomplete="off" spellcheck="false" />
     <div class="ghost" part="ghost" aria-live="polite"><span class="ghost-completion"><span class="ghost-typed" aria-hidden="true"></span><span class="ghost-tail"></span><kbd class="ghost-hint" part="hint" hidden>Tab</kbd></span><span class="ghost-resolution"></span></div>
   </div>
-  <div class="ambiguity-list" part="ambiguity-list" hidden></div>
+	<p>tomorrow · last tuesday · march 14 to 28 · 9 days after christmas<br />Hit <kbd class="ghost-hint">Tab</kbd> to autocomplete.</p>
+  <slot name="ambiguity"></slot>
 `;
 
 export class HotDateElement extends HTMLElement {
@@ -133,11 +147,17 @@ export class HotDateElement extends HTMLElement {
     }
 
     this.inputElement = root.querySelector("input") ?? document.createElement("input");
-    this.ghostTypedElement = root.querySelector<HTMLSpanElement>(".ghost-typed") ?? document.createElement("span");
-    this.ghostTailElement = root.querySelector<HTMLSpanElement>(".ghost-tail") ?? document.createElement("span");
-    this.ghostHintElement = root.querySelector<HTMLElement>(".ghost-hint") ?? document.createElement("kbd");
-    this.ghostResolutionElement = root.querySelector<HTMLSpanElement>(".ghost-resolution") ?? document.createElement("span");
-    this.ambiguityElement = root.querySelector<HTMLDivElement>("[part='ambiguity-list']") ?? document.createElement("div");
+    this.ghostTypedElement =
+      root.querySelector<HTMLSpanElement>(".ghost-typed") ?? document.createElement("span");
+    this.ghostTailElement =
+      root.querySelector<HTMLSpanElement>(".ghost-tail") ?? document.createElement("span");
+    this.ghostHintElement =
+      root.querySelector<HTMLElement>(".ghost-hint") ?? document.createElement("kbd");
+    this.ghostResolutionElement =
+      root.querySelector<HTMLSpanElement>(".ghost-resolution") ?? document.createElement("span");
+    this.ambiguityElement = document.createElement("div");
+    this.ambiguityElement.setAttribute("slot", "ambiguity");
+    this.ambiguityElement.hidden = true;
 
     this.internals = typeof this.attachInternals === "function" ? this.attachInternals() : null;
 
@@ -145,17 +165,24 @@ export class HotDateElement extends HTMLElement {
   }
 
   public connectedCallback(): void {
+    if (this.ambiguityElement.parentNode !== this) {
+      this.append(this.ambiguityElement);
+    }
     this.syncInputPresentation();
     this.parseAndRender();
   }
 
-  public attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
+  public attributeChangedCallback(
+    name: string,
+    oldValue: string | null,
+    newValue: string | null,
+  ): void {
     if (oldValue === newValue) {
       return;
     }
 
     if (name === "placeholder") {
-      this.inputElement.placeholder = newValue ?? "";
+      this.inputElement.placeholder = newValue ?? DEFAULT_PLACEHOLDER;
       return;
     }
 
@@ -242,7 +269,9 @@ export class HotDateElement extends HTMLElement {
 
   public confirm(): boolean {
     if (this.parseState.status !== "valid") {
-      this.emit("commit-blocked", { reason: this.parseState.status === "ambiguous" ? "ambiguous" : "invalid" });
+      this.emit("commit-blocked", {
+        reason: this.parseState.status === "ambiguous" ? "ambiguous" : "invalid",
+      });
       return false;
     }
 
@@ -331,6 +360,7 @@ export class HotDateElement extends HTMLElement {
       canonicalValue: this.getCanonicalValue(candidate),
     };
 
+    this.syncLiveValue();
     this.renderAll();
 
     this.emit("ambiguity-change", {
@@ -383,7 +413,12 @@ export class HotDateElement extends HTMLElement {
         return;
       }
 
-      if (event.key === "Tab" && !event.shiftKey && this.isCaretAtInputEnd() && this.hasCompletionTail()) {
+      if (
+        event.key === "Tab" &&
+        !event.shiftKey &&
+        this.isCaretAtInputEnd() &&
+        this.hasCompletionTail()
+      ) {
         if (this.acceptSuggestion()) {
           event.preventDefault();
         }
@@ -407,6 +442,7 @@ export class HotDateElement extends HTMLElement {
     this.parseState = this.parser.parse(this.rawInputValue, this.buildContext());
     this.activeSuggestionIndexValue = 0;
 
+    this.syncLiveValue();
     this.renderAll();
 
     this.emit("parse-change", {
@@ -438,7 +474,7 @@ export class HotDateElement extends HTMLElement {
     this.ghostTailElement.textContent = tail;
     this.ghostHintElement.hidden = tail.length === 0;
     this.ghostResolutionElement.textContent =
-      this.parseState.status === "valid" ? this.parseState.previewLabel ?? "" : "";
+      this.parseState.status === "valid" ? (this.parseState.previewLabel ?? "") : "";
   }
 
   private computeCompletionTail(): string {
@@ -474,7 +510,6 @@ export class HotDateElement extends HTMLElement {
       group.options.forEach((option) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.setAttribute("part", "chip");
         button.textContent = option.label;
         button.addEventListener("click", () => {
           this.resolveAmbiguity(group.id, option.id);
@@ -489,7 +524,7 @@ export class HotDateElement extends HTMLElement {
       this.inputElement.value = this.rawInputValue;
     }
 
-    this.inputElement.placeholder = this.getAttribute("placeholder") ?? "";
+    this.inputElement.placeholder = this.getAttribute("placeholder") ?? DEFAULT_PLACEHOLDER;
     this.inputElement.disabled = this.hasAttribute("disabled");
   }
 
@@ -512,7 +547,8 @@ export class HotDateElement extends HTMLElement {
   private buildContext(): ParseContext {
     return {
       nowIso: new Date().toISOString(),
-      timezone: this.getAttribute("timezone") ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+      timezone:
+        this.getAttribute("timezone") ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
       locale: this.getAttribute("locale") ?? navigator.language ?? "en-US",
       weekStart: this.getAttribute("week-start") === "monday" ? "monday" : "sunday",
       productRules: {
@@ -532,7 +568,11 @@ export class HotDateElement extends HTMLElement {
       return this.parseState.candidates[0] ?? null;
     }
 
-    return this.parseState.candidates.find((candidate) => candidate.id === this.parseState.selectedCandidateId) ?? null;
+    return (
+      this.parseState.candidates.find(
+        (candidate) => candidate.id === this.parseState.selectedCandidateId,
+      ) ?? null
+    );
   }
 
   private getCanonicalValue(candidate: Candidate | null): string | null {
@@ -541,19 +581,46 @@ export class HotDateElement extends HTMLElement {
     }
 
     if (candidate.kind === "point") {
-      return candidate.utcIso ?? null;
+      return candidate.isoDate ?? null;
     }
 
     if (!candidate.range) {
       return null;
     }
 
-    return `${candidate.range.startUtcIso}/${candidate.range.endUtcIso}`;
+    return `${candidate.range.startDate}/${candidate.range.endDate}`;
   }
 
   private isCaretAtInputEnd(): boolean {
     const caret = this.inputElement.selectionStart;
     return caret === this.inputElement.value.length;
+  }
+
+  private syncLiveValue(): void {
+    const candidate = this.getSelectedCandidate();
+    const canonicalValue =
+      this.parseState.status === "valid" ? this.getCanonicalValue(candidate) : null;
+
+    if (canonicalValue === this.committedValue) {
+      return;
+    }
+
+    this.committedValue = canonicalValue;
+
+    if (canonicalValue === null) {
+      this.removeAttribute("value");
+      this.internals?.setFormValue("");
+    } else {
+      this.setAttribute("value", canonicalValue);
+      this.internals?.setFormValue(canonicalValue);
+    }
+
+    this.emit("value-change", {
+      value: canonicalValue,
+      valueKind: candidate?.kind ?? null,
+      rawInput: this.rawInputValue,
+      candidate,
+    });
   }
 
   private syncValidity(): void {

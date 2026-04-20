@@ -203,6 +203,21 @@ function parseHolidayAnchor(normalizedInput: string, now: Date, timeZone: string
     }
   }
 
+  const trailingYearMatch = normalizedInput.match(/^(.+?)\s+(\d{4})$/);
+  if (trailingYearMatch) {
+    const [, expression, yearText] = trailingYearMatch;
+    const targetYear = Number.parseInt(yearText, 10);
+    const endOfPriorYear = createLocalDate(targetYear - 1, 12, 31, 23, 59, timeZone);
+    const holidayInYear = resolveHolidayDate(expression, endOfPriorYear, timeZone);
+    if (holidayInYear) {
+      return {
+        kind: "point",
+        date: holidayInYear,
+        suggestionText: normalizedInput,
+      };
+    }
+  }
+
   const holidayDate = resolveHolidayDate(normalizedInput, now, timeZone);
   if (holidayDate) {
     return {

@@ -250,9 +250,6 @@ export function addDuration(inputDate: Date, amount: number, unit: DurationUnit,
 }
 
 export function formatPointLabel(date: Date, timeZone = SYSTEM_TIME_ZONE): string {
-  const zonedDateTime = toZonedDateTime(date, timeZone);
-  const hasTime = zonedDateTime.hour !== 0 || zonedDateTime.minute !== 0;
-
   const fullDateFormatter = new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
@@ -260,20 +257,7 @@ export function formatPointLabel(date: Date, timeZone = SYSTEM_TIME_ZONE): strin
     timeZone,
   });
 
-  if (!hasTime) {
-    return fullDateFormatter.format(date);
-  }
-
-  const fullDateTimeFormatter = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone,
-  });
-
-  return fullDateTimeFormatter.format(date);
+  return fullDateFormatter.format(date);
 }
 
 export function formatRangeLabel(startDate: Date, endDate: Date, timeZone = SYSTEM_TIME_ZONE): string {
@@ -505,6 +489,57 @@ export function getNextAnnualDate(referenceDate: Date, month: number, day: numbe
       year,
       month,
       day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    });
+  }
+
+  return toDate(candidate);
+}
+
+function computeEasterSunday(year: number): { month: number; day: number } {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return { month, day };
+}
+
+export function getNextAnnualEasterDate(referenceDate: Date, timeZone = SYSTEM_TIME_ZONE): Date {
+  const now = toZonedDateTime(referenceDate, timeZone);
+  let year = now.year;
+  let easter = computeEasterSunday(year);
+  let candidate = Temporal.ZonedDateTime.from({
+    timeZone,
+    year,
+    month: easter.month,
+    day: easter.day,
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+  });
+
+  if (candidate.epochMilliseconds <= now.epochMilliseconds) {
+    year += 1;
+    easter = computeEasterSunday(year);
+    candidate = Temporal.ZonedDateTime.from({
+      timeZone,
+      year,
+      month: easter.month,
+      day: easter.day,
       hour: 0,
       minute: 0,
       second: 0,

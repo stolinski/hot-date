@@ -65,14 +65,6 @@ function isHintVisible(element: HotDateElement): boolean {
   return hint ? !hint.hidden : false;
 }
 
-function getChipButtons(element: HotDateElement): HTMLButtonElement[] {
-  const list = element.shadowRoot?.querySelector<HTMLDivElement>("[part='ambiguity-list']");
-  if (!list || list.hidden) {
-    return [];
-  }
-  return [...list.querySelectorAll<HTMLButtonElement>("button")];
-}
-
 describe("<hot-date> element", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -96,7 +88,7 @@ describe("<hot-date> element", () => {
 
     expect(element.status).toBe("valid");
     expect(element.valueKind).toBe("range");
-    expect(element.parseResult.canonicalValue).toBe("2026-03-14T00:00:00Z/2026-03-28T00:00:00Z");
+    expect(element.parseResult.canonicalValue).toBe("2026-03-14/2026-03-28");
 
     expect(getGhostTyped(element)).toBe("march 14 to march 28");
     expect(getGhostTail(element)).toBe("");
@@ -169,16 +161,16 @@ describe("<hot-date> element", () => {
     fireKey(element, { key: "Enter" });
 
     expect(committed).not.toBeNull();
-    expect(committed!.value).toBe("2026-12-25T00:00:00Z");
+    expect(committed!.value).toBe("2026-12-25");
     expect(committed!.valueKind).toBe("point");
-    expect(element.value).toBe("2026-12-25T00:00:00Z");
-    expect(element.getAttribute("value")).toBe("2026-12-25T00:00:00Z");
+    expect(element.value).toBe("2026-12-25");
+    expect(element.getAttribute("value")).toBe("2026-12-25");
   });
 
-  it("blocks commit on ambiguous input and fires commit-blocked", () => {
+  it("blocks commit on invalid input and fires commit-blocked", () => {
     const element = createElement();
-    typeInput(element, "next friday");
-    expect(element.status).toBe("ambiguous");
+    typeInput(element, "not a date");
+    expect(element.status).toBe("invalid");
 
     let blockReason: string | null = null;
     element.addEventListener("commit-blocked", (event) => {
@@ -187,21 +179,8 @@ describe("<hot-date> element", () => {
 
     fireKey(element, { key: "Enter" });
 
-    expect(blockReason).toBe("ambiguous");
+    expect(blockReason).toBe("invalid");
     expect(element.value).toBeNull();
-  });
-
-  it("renders ambiguity chips and resolves on click", () => {
-    const element = createElement();
-    typeInput(element, "next friday");
-
-    const chips = getChipButtons(element);
-    expect(chips.length).toBe(2);
-
-    chips[0]?.click();
-    expect(element.status).toBe("valid");
-    expect(element.parseResult.canonicalValue).not.toBeNull();
-    expect(getChipButtons(element).length).toBe(0);
   });
 
   it("cycles suggestions with ArrowDown and ArrowUp", () => {
@@ -282,7 +261,7 @@ describe("<hot-date> element", () => {
     typeInput(element, "christmas");
     fireKey(element, { key: "Enter" });
 
-    expect(spy).toHaveBeenCalledWith("2026-12-25T00:00:00Z");
+    expect(spy).toHaveBeenCalledWith("2026-12-25");
     spy.mockRestore();
   });
 });
