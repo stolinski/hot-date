@@ -1,6 +1,6 @@
 {
   "name": "@stolinski/hot-date",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "A date input web component.",
   "type": "module",
   "main": "./dist/hot-date.js",

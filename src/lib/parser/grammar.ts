@@ -77,12 +77,15 @@ function resolveRangeEndpoint(rawExpression: string, now: Date, timeZone: string
     }
   }
 
-  const future = normalized.match(/^(.+)\s+from\s+now$/);
+  const future = normalized.match(/^(.+?)\s+from\s+(.+)$/);
   if (future) {
     const duration = parseDurationExpression(future[1], "day");
     if (duration) {
-      const date = addDuration(now, duration.amount, duration.unit, timeZone);
-      return { date: startOfMinute(date), rollUnit: null };
+      const anchorDate = resolveAnchorOrNow(future[2], now, timeZone);
+      if (anchorDate) {
+        const shifted = addDuration(anchorDate, duration.amount, duration.unit, timeZone);
+        return { date: startOfMinute(shifted), rollUnit: null };
+      }
     }
   }
 
@@ -120,6 +123,27 @@ function resolveRangeEndpoint(rawExpression: string, now: Date, timeZone: string
       const date = addDuration(now, -duration.amount, duration.unit, timeZone);
       return { date: startOfMinute(date), rollUnit: null };
     }
+  }
+
+  return null;
+}
+
+function resolveAnchorOrNow(rawExpression: string, now: Date, timeZone: string): Date | null {
+  const normalized = normalizeInput(rawExpression);
+
+  if (normalized === "now") {
+    return now;
+  }
+
+  const anchor = parseAnchor(normalized, now, timeZone);
+  if (anchor) {
+    return anchor.kind === "point" ? anchor.date : anchor.start;
+  }
+
+  const endpoint = parseDateEndpoint(rawExpression, now, timeZone);
+  if (endpoint) {
+    const year = endpoint.year ?? now.getFullYear();
+    return createLocalDate(year, endpoint.month, endpoint.day, endpoint.hour, endpoint.minute, timeZone);
   }
 
   return null;
@@ -479,7 +503,7 @@ export function parsePastDurationPoint(ctx: RuleContext): CandidateWithSuggestio
 
 export function parseFutureDurationPoint(ctx: RuleContext): CandidateWithSuggestion | null {
   const { normalizedInput, now, timeZone, factory } = ctx;
-  const match = normalizedInput.match(/^(.+)\s+from\s+now$/);
+  const match = normalizedInput.match(/^(.+?)\s+from\s+(.+)$/);
 
   if (!match) {
     return null;
@@ -491,7 +515,13 @@ export function parseFutureDurationPoint(ctx: RuleContext): CandidateWithSuggest
     return null;
   }
 
-  const date = addDuration(now, parsedDuration.amount, parsedDuration.unit, timeZone);
+  const anchorDate = resolveAnchorOrNow(match[2], now, timeZone);
+
+  if (!anchorDate) {
+    return null;
+  }
+
+  const date = addDuration(anchorDate, parsedDuration.amount, parsedDuration.unit, timeZone);
 
   return factory.createPoint({
     date: startOfMinute(date),

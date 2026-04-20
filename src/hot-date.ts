@@ -9,7 +9,7 @@ import type {
   ValueKind,
 } from "./lib/parser/parser-types";
 
-const DEFAULT_PLACEHOLDER = "next Friday";
+const DEFAULT_PLACEHOLDER = "type anything...";
 
 const TEMPLATE = document.createElement("template");
 TEMPLATE.innerHTML = `
@@ -18,6 +18,10 @@ TEMPLATE.innerHTML = `
       display: inline-block;
       font: inherit;
       color: inherit;
+			box-shadow: 0 2px 4px rgb(0 0 0 / .05), 0 4px 8px rgb(0 0 0 / .1);
+			border-radius: 20px;
+			padding: 5px;
+			background: #eeeeee7d;
 	}
 
 		.field {
@@ -92,14 +96,18 @@ TEMPLATE.innerHTML = `
       display: none;
     }
 		p {
-		line-height: 1.4;
+		line-height: 1.7;
+		padding: 0 10px 5px;
+		margin-bottom: 0;
+		font-size: 14px;
+		font-style: italic;
 	}
   </style>
   <div class="field" part="field">
     <input class="input" part="input" type="text" autocomplete="off" spellcheck="false" />
     <div class="ghost" part="ghost" aria-live="polite"><span class="ghost-completion"><span class="ghost-typed" aria-hidden="true"></span><span class="ghost-tail"></span><kbd class="ghost-hint" part="hint" hidden>Tab</kbd></span><span class="ghost-resolution"></span></div>
   </div>
-	<p>tomorrow · last tuesday · march 14 to 28 · 9 days after christmas<br />Hit <kbd class="ghost-hint">Tab</kbd> to autocomplete.</p>
+	<p>Examples: march 14 to 28 · tomorrow · 3/1/86 · 9 days after christmas until new years<br />Hit <kbd class="ghost-hint">Tab</kbd> to autocomplete.</p>
   <slot name="ambiguity"></slot>
 `;
 
